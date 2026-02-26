@@ -102,6 +102,19 @@
       outline-offset: 1px;
     }
 
+    .saved-indicator {
+      font-size: 11px;
+      color: var(--muted);
+      opacity: 0;
+      transition: opacity 1.4s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .saved-indicator.visible {
+      opacity: 1;
+      transition: opacity 0s;
+    }
+
     .timer-panel {
       padding: 16px 20px 10px;
       border-bottom: 1px solid rgba(140, 150, 142, 0.12);
@@ -980,6 +993,7 @@
       <div>
         <h1>Task Timer Planner</h1>
       </div>
+      <span id="savedIndicator" class="saved-indicator" aria-live="polite"></span>
       <div class="actions">
         <select id="chimeSelect" class="chime-select" aria-label="Select task chime">
           <option value="Task_Chime_1.wav" selected>Chime 1</option>
@@ -1122,6 +1136,7 @@
         { start: "#f53d54", end: "#fd4b58" },
         { start: "#f4c238", end: "#f6c63b" }
       ];
+      const STORAGE_KEY = "task-timer-v1";
 
       const sampleTasks = () => ([
         { id: crypto.randomUUID(), name: "Task 1", minutes: 15, description: "" },
@@ -1133,6 +1148,8 @@
       let dragRowId = null;
       let resizeState = null;
       let lastHeaderCols = null;
+      let saveDebounceId = 0;
+      let savedFadeId = 0;
 
       const rowsEl = document.getElementById("rows");
       const timelineHeaderEl = document.getElementById("timelineHeader");
@@ -1167,6 +1184,7 @@
       const timerPauseBtn = document.getElementById("timerPauseBtn");
       const timerStopBtn = document.getElementById("timerStopBtn");
       const timerNextBtn = document.getElementById("timerNextBtn");
+      const savedIndicatorEl = document.getElementById("savedIndicator");
 
       const timerState = {
         running: false,
@@ -1405,6 +1423,51 @@
         timerMuteBtn.classList.toggle("muted", timerState.muted);
         timerMuteBtn.setAttribute("aria-label", timerState.muted ? "Unmute timer tick" : "Mute timer tick");
         timerMuteBtn.title = timerState.muted ? "Unmute timer tick" : "Mute timer tick";
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          const state = JSON.parse(raw);
+          if (!state || state.version !== 1) return null;
+          return state;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function showSavedIndicator() {
+        if (!savedIndicatorEl) return;
+        savedIndicatorEl.textContent = "Saved";
+        savedIndicatorEl.classList.add("visible");
+        clearTimeout(savedFadeId);
+        savedFadeId = setTimeout(() => {
+          savedIndicatorEl.classList.remove("visible");
+        }, 1500);
+      }
+
+      function saveState() {
+        try {
+          const state = {
+            version: 1,
+            tasks: tasks.map(({ id, name, minutes, description }) => ({ id, name, minutes, description })),
+            settings: {
+              muted: timerState.muted,
+              chime: chimeSelectEl.value
+            },
+            timer: {
+              elapsedMs: timerState.elapsedMs
+            }
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          showSavedIndicator();
+        } catch (_) {}
+      }
+
+      function debouncedSave() {
+        clearTimeout(saveDebounceId);
+        saveDebounceId = setTimeout(saveState, 800);
       }
 
       function playTickSound() {
@@ -1812,6 +1875,7 @@
       function pauseTimer() {
         stopTimerLoop();
         updateTimerVisual();
+        saveState();
       }
 
       function resetTimer() {
@@ -1820,6 +1884,7 @@
         timerState.activeTaskId = "";
         timerState.lastTickCueTaskId = "";
         updateTimerVisual();
+        saveState();
       }
 
       function skipForwardTask() {
@@ -1827,6 +1892,7 @@
         const info = getCurrentTaskInfo(elapsedMinutes);
         if (!info) {
           setElapsedMinutes(0);
+          saveState();
           return;
         }
         const next = tasks[info.index + 1];
@@ -1835,6 +1901,7 @@
         } else {
           setElapsedMinutes(getTotalTaskMinutesCapped());
         }
+        saveState();
       }
 
       function skipBackTask() {
@@ -1842,20 +1909,24 @@
         const info = getCurrentTaskInfo(elapsedMinutes);
         if (!info) {
           setElapsedMinutes(0);
+          saveState();
           return;
         }
         const secondsIntoTask = (elapsedMinutes - info.start) * 60;
         if (secondsIntoTask > 2) {
           setElapsedMinutes(info.start);
+          saveState();
           return;
         }
         const prev = tasks[info.index - 1];
         if (!prev) {
           setElapsedMinutes(0);
+          saveState();
           return;
         }
         const prevStart = tasks.slice(0, info.index - 1).reduce((sum, task) => sum + clampMinutes(task.minutes), 0);
         setElapsedMinutes(prevStart);
+        saveState();
       }
 
       function refreshTimelineLayout() {
@@ -1897,6 +1968,7 @@
         if (placeAfter) insertIndex += 1;
         tasks.splice(insertIndex, 0, item);
         renderRows();
+        saveState();
       }
 
       function deleteTask(taskId) {
@@ -1905,6 +1977,7 @@
         tasks = nextTasks;
         if (resizeState?.taskId === taskId) resizeState = null;
         renderRows();
+        saveState();
       }
 
       function renderRows() {
@@ -1971,6 +2044,7 @@
             const labelEl = row.querySelector(".bar-label");
             if (labelEl) labelEl.textContent = task.name || "Untitled task";
             updateTimerVisual();
+            debouncedSave();
           });
 
           const deleteBtn = document.createElement("button");
@@ -2004,6 +2078,7 @@
             }
             task.description = limited.text;
             updateTimerVisual();
+            debouncedSave();
           }
 
           syncDescField(task.description || "");
@@ -2050,6 +2125,7 @@
             setTaskMinutes(task.id, parsed);
             durationInput.value = formatMinutes(task.minutes);
             refreshTimelineLayout();
+            saveState();
           });
 
           const durationUnit = document.createElement("span");
@@ -2133,6 +2209,7 @@
         if (!resizeState) return;
         resizeState = null;
         document.body.style.cursor = "";
+        saveState();
       });
 
       addTaskBtn.addEventListener("click", () => {
@@ -2145,10 +2222,16 @@
         };
         tasks.push(next);
         renderRows();
+        saveState();
       });
 
       resetBtn.addEventListener("click", () => {
+        localStorage.removeItem(STORAGE_KEY);
         tasks = sampleTasks();
+        timerState.elapsedMs = 0;
+        timerState.activeTaskId = "";
+        timerState.lastTickCueTaskId = "";
+        stopTimerLoop();
         renderRows();
       });
 
@@ -2165,14 +2248,17 @@
         timerState.scrubbing = false;
         timerState.lastTickCueTaskId = "";
         updateTimerVisual();
+        saveState();
       });
 
       timerMuteBtn.addEventListener("click", () => {
         timerState.muted = !timerState.muted;
         updateTimerMuteButton();
+        saveState();
       });
       chimeSelectEl.addEventListener("change", () => {
         setChimeSource(chimeSelectEl.value);
+        saveState();
       });
       timerPrevBtn.addEventListener("click", skipBackTask);
       timerNextBtn.addEventListener("click", skipForwardTask);
@@ -2187,6 +2273,22 @@
         }
         updateTimerFocusButton();
       });
+
+      const _saved = loadState();
+      if (_saved?.tasks?.length) {
+        tasks = _saved.tasks;
+      }
+      if (_saved?.settings) {
+        if (typeof _saved.settings.muted === "boolean") {
+          timerState.muted = _saved.settings.muted;
+        }
+        if (_saved.settings.chime) {
+          chimeSelectEl.value = _saved.settings.chime;
+        }
+      }
+      if (typeof _saved?.timer?.elapsedMs === "number") {
+        timerState.elapsedMs = Math.max(0, _saved.timer.elapsedMs);
+      }
 
       renderRows();
       updateTimerFocusButton();
