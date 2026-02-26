@@ -1,0 +1,2198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Task Timer Gantt</title>
+  <style>
+    :root {
+      --bg: #eef0eb;
+      --panel: #f7f7f5;
+      --line: #d9ddd5;
+      --text: #2f3a35;
+      --muted: #6e7771;
+      --accent: #256f68;
+      --accent-soft: #a9ddd7;
+      --bar-a: #4b8e87;
+      --bar-b: #72d0c7;
+      --row-h: 56px;
+      --left-col: 260px;
+      --duration-col: 110px;
+      --grid-cols: 16;
+      --grid-width: 900px;
+      --radius: 18px;
+      --col-line: rgba(58, 70, 64, 0.09);
+      --today-x: 78%;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(255,255,255,0.9), transparent 40%),
+        radial-gradient(circle at 90% 20%, rgba(210,236,230,0.55), transparent 42%),
+        linear-gradient(180deg, #f2f4ef, #e8ece3);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(100%, calc(var(--left-col) + var(--duration-col) + var(--grid-width) + 28px));
+      background: rgba(247, 247, 245, 0.86);
+      border: 1px solid rgba(140, 150, 142, 0.2);
+      border-radius: 28px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 18px 40px rgba(30, 45, 35, 0.08);
+      overflow: hidden;
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px 10px;
+      border-bottom: 1px solid rgba(140, 150, 142, 0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.15));
+    }
+
+    .titlebar h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid rgba(90, 110, 102, 0.2);
+      background: rgba(255,255,255,0.75);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: white; }
+
+    .chime-select {
+      border: 1px solid rgba(90, 110, 102, 0.2);
+      background: rgba(255,255,255,0.75);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .chime-select:hover {
+      background: white;
+    }
+
+    .chime-select:focus {
+      outline: 2px solid rgba(75, 142, 135, 0.25);
+      outline-offset: 1px;
+    }
+
+    .timer-panel {
+      padding: 16px 20px 10px;
+      border-bottom: 1px solid rgba(140, 150, 142, 0.12);
+      background:
+        radial-gradient(circle at 20% 10%, rgba(255,255,255,0.55), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04));
+    }
+
+    .timer-widget {
+      display: grid;
+      grid-template-columns: minmax(260px, 420px) minmax(220px, 1fr);
+      gap: 18px;
+      align-items: center;
+      background: rgba(255,255,255,0.34);
+      border: 1px solid rgba(140, 150, 142, 0.14);
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    .timer-dial-shell {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      width: min(100%, 420px);
+      margin-inline: auto;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 50% 40%, rgba(255,255,255,0.75), rgba(255,255,255,0.25) 60%, rgba(220,225,218,0.15) 100%);
+    }
+
+    .timer-overlay-buttons {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      display: flex;
+      gap: 8px;
+      z-index: 2;
+    }
+
+    .timer-overlay-btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 10px;
+      border: 1px solid rgba(87, 116, 220, 0.22);
+      background: rgba(255,255,255,0.86);
+      color: #1f2f8f;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 12px rgba(30, 45, 80, 0.08);
+    }
+
+    .timer-overlay-btn:hover {
+      background: #fff;
+    }
+
+    .timer-overlay-btn svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+      fill: currentColor;
+    }
+
+    .timer-focus-btn .icon-collapse {
+      display: none;
+    }
+
+    .timer-focus-btn.active .icon-expand {
+      display: none;
+    }
+
+    .timer-focus-btn.active .icon-collapse {
+      display: block;
+    }
+
+    .timer-mute-btn .icon-unmuted {
+      display: block;
+    }
+
+    .timer-mute-btn .icon-muted {
+      display: none;
+    }
+
+    .timer-mute-btn.muted .icon-unmuted {
+      display: none;
+    }
+
+    .timer-mute-btn.muted .icon-muted {
+      display: block;
+    }
+
+    .timer-dial {
+      width: 100%;
+      height: 100%;
+      display: block;
+      filter: drop-shadow(0 10px 20px rgba(40, 55, 45, 0.08));
+    }
+
+    .timer-readout {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      text-align: center;
+      padding: 0 72px;
+    }
+
+    .timer-readout-card {
+      background: rgba(247, 247, 245, 0.86);
+      border: 1px solid rgba(140, 150, 142, 0.16);
+      border-radius: 16px;
+      padding: 12px 14px;
+      box-shadow: 0 8px 20px rgba(40, 55, 45, 0.07);
+      min-width: 170px;
+    }
+
+    .timer-time {
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      font-size: clamp(22px, 4vw, 34px);
+      letter-spacing: 0.02em;
+      color: #1f2433;
+      line-height: 1;
+    }
+
+    .timer-task {
+      margin-top: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: color 120ms ease;
+    }
+
+    .timer-sub {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .timer-sidebar {
+      display: grid;
+      gap: 12px;
+      align-content: center;
+    }
+
+    .timer-status {
+      display: grid;
+      gap: 8px;
+      background: rgba(255,255,255,0.52);
+      border: 1px solid rgba(140, 150, 142, 0.14);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    .timer-status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .timer-status-row span:first-child {
+      color: var(--muted);
+    }
+
+    .timer-status-row strong {
+      color: #222b29;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .timer-detail-card {
+      display: grid;
+      gap: 8px;
+      background: rgba(255,255,255,0.52);
+      border: 1px solid rgba(140, 150, 142, 0.14);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    .timer-detail-card h3 {
+      margin: 0;
+      font-size: 15px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .timer-detail-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #222b29;
+      line-height: 1.2;
+      transition: color 120ms ease;
+    }
+
+    .timer-detail-text {
+      min-height: 52px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #45514b;
+      background: rgba(255,255,255,0.55);
+      border: 1px solid rgba(140, 150, 142, 0.12);
+      border-radius: 10px;
+      padding: 12px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .timer-controls {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .timer-control-panel {
+      display: grid;
+      gap: 10px;
+      background: rgba(255,255,255,0.52);
+      border: 1px solid rgba(140, 150, 142, 0.14);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    .timer-control-panel h3 {
+      margin: 0;
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .timer-btn {
+      min-width: 0;
+      padding: 0;
+      border-radius: 12px;
+      font-weight: 700;
+    }
+
+    .timer-icon-btn {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.85);
+      border: 1px solid rgba(140, 150, 142, 0.2);
+      color: #2d3448;
+      box-shadow: 0 3px 8px rgba(40, 55, 45, 0.05);
+      transition: transform 100ms ease, box-shadow 120ms ease, background 120ms ease;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .timer-icon-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 12px rgba(40, 55, 45, 0.08);
+      background: #fff;
+    }
+
+    .timer-icon-btn:active {
+      transform: translateY(0);
+    }
+
+    .timer-icon-btn svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+      fill: currentColor;
+    }
+
+    .timer-btn-play {
+      color: #1f655c;
+      border-color: rgba(70, 160, 137, 0.24);
+      background: linear-gradient(180deg, rgba(86, 198, 170, 0.2), rgba(86, 198, 170, 0.08)), rgba(255,255,255,0.9);
+    }
+
+    .timer-btn-pause {
+      color: #41539a;
+      border-color: rgba(87, 116, 220, 0.2);
+      background: linear-gradient(180deg, rgba(105, 140, 255, 0.14), rgba(105, 140, 255, 0.05)), rgba(255,255,255,0.9);
+    }
+
+    .timer-btn-stop {
+      background: linear-gradient(180deg, rgba(245, 108, 108, 0.18), rgba(245, 108, 108, 0.08)), rgba(255,255,255,0.9);
+      border-color: rgba(200, 92, 92, 0.2);
+      color: #8c4141;
+    }
+
+    .timer-btn-skip {
+      color: #2f3a55;
+    }
+
+    .task-scrubber {
+      display: grid;
+      gap: 8px;
+    }
+
+    .task-scrubber-top {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .task-scrubber-top strong {
+      color: #2a322f;
+      font-weight: 700;
+    }
+
+    .task-scrubber input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 132, 124, 0.16);
+      background: linear-gradient(90deg, rgba(73,199,156,0.55) 0%, rgba(73,199,156,0.55) var(--scrub-fill, 0%), rgba(220,225,220,0.9) var(--scrub-fill, 0%), rgba(220,225,220,0.9) 100%);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .task-scrubber input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #fff;
+      border: 2px solid currentColor;
+      box-shadow: 0 2px 8px rgba(40, 55, 45, 0.18);
+      margin-top: -5px;
+    }
+
+    .task-scrubber input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #fff;
+      border: 2px solid currentColor;
+      box-shadow: 0 2px 8px rgba(40, 55, 45, 0.18);
+    }
+
+    .task-scrubber input[type="range"]::-moz-range-track {
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 132, 124, 0.16);
+      background: rgba(220,225,220,0.9);
+    }
+
+    .timer-segment {
+      transition: transform 200ms ease, filter 200ms ease, opacity 200ms ease;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    .timer-segment.current {
+      filter: drop-shadow(0 10px 14px rgba(55, 70, 95, 0.14));
+      animation: pulse-segment 1.15s ease-in-out infinite;
+    }
+
+    .timer-segment.completed {
+      opacity: 0.96;
+    }
+
+    .timer-segment.upcoming {
+      opacity: 0.9;
+    }
+
+    .timer-face-label {
+      font-size: 12px;
+      font-weight: 800;
+      fill: #20263a;
+    }
+
+    .timer-face-label.minor {
+      font-size: 10px;
+      fill: #606879;
+      font-weight: 700;
+    }
+
+    .timer-caption {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .timer-state-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #93a39a;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+      box-shadow: 0 0 0 0 rgba(81, 198, 168, 0);
+      transition: background 120ms ease;
+    }
+
+    .timer-state-dot.running {
+      background: #45c5a0;
+      animation: pulse-dot 1s ease-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0% { box-shadow: 0 0 0 0 rgba(69, 197, 160, 0.35); }
+      100% { box-shadow: 0 0 0 10px rgba(69, 197, 160, 0); }
+    }
+
+    @keyframes pulse-segment {
+      0%, 100% { filter: drop-shadow(0 10px 14px rgba(55, 70, 95, 0.10)); }
+      50% { filter: drop-shadow(0 14px 18px rgba(55, 70, 95, 0.20)); }
+    }
+
+    .table-wrap {
+      overflow: auto;
+      padding-bottom: 6px;
+    }
+
+    .table {
+      width: calc(var(--left-col) + var(--duration-col) + var(--grid-width));
+      min-width: calc(var(--left-col) + var(--duration-col) + var(--grid-width));
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: grid;
+      grid-template-columns: var(--left-col) var(--duration-col) var(--grid-width);
+      align-items: stretch;
+      background: rgba(247, 247, 245, 0.95);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hcell {
+      height: 58px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      border-right: 1px solid var(--line);
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .hcell:last-child { border-right: 0; padding: 0; }
+
+    .timeline-header {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: repeat(var(--grid-cols), minmax(0, 1fr));
+    }
+
+    .timeline-header .slot {
+      display: grid;
+      place-items: center;
+      color: #616a64;
+      font-size: 13px;
+      border-left: 1px solid var(--line);
+    }
+    .timeline-header .slot:first-child { border-left: 0; }
+
+    .today-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: var(--today-x);
+      width: 2px;
+      background: rgba(255, 99, 99, 0.75);
+      pointer-events: none;
+    }
+
+    .today-tag {
+      position: absolute;
+      top: 10px;
+      left: calc(var(--today-x) + 4px);
+      transform: translateX(-50%);
+      background: #f1a2a2;
+      color: white;
+      border-radius: 0;
+      padding: 6px 14px;
+      font-weight: 700;
+      font-size: 12px;
+      pointer-events: none;
+      box-shadow: 0 4px 10px rgba(180, 70, 70, 0.25);
+    }
+
+    .rows { position: relative; }
+
+    .row {
+      display: grid;
+      grid-template-columns: var(--left-col) var(--duration-col) var(--grid-width);
+      grid-template-rows: auto auto;
+      background: rgba(255,255,255,0.28);
+      border-bottom: 1px solid rgba(140, 150, 142, 0.14);
+    }
+
+    .row.dragging {
+      opacity: 0.45;
+    }
+
+    .row.drop-before {
+      box-shadow: inset 0 3px 0 #2f7c75;
+    }
+
+    .row.drop-after {
+      box-shadow: inset 0 -3px 0 #2f7c75;
+    }
+
+    .cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-right: 1px solid rgba(140, 150, 142, 0.14);
+      min-width: 0;
+    }
+
+    .task-cell {
+      background: rgba(255,255,255,0.25);
+      align-items: flex-start;
+      padding-top: 8px;
+      padding-bottom: 4px;
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .task-cell .task-name {
+      flex: 1 1 auto;
+    }
+
+    .task-fields {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    .task-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: start;
+      width: 100%;
+    }
+
+    .task-desc {
+      width: 100%;
+      min-height: 42px;
+      resize: vertical;
+      border: 1px solid rgba(120, 132, 124, 0.2);
+      background: rgba(255,255,255,0.78);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.35;
+      outline: none;
+      overflow: auto;
+    }
+
+    .task-desc-cell {
+      grid-column: 1 / span 2;
+      grid-row: 2;
+      align-items: stretch;
+      border-right: 1px solid rgba(140, 150, 142, 0.14);
+      padding-top: 0;
+      padding-bottom: 8px;
+      background: rgba(255,255,255,0.25);
+    }
+
+    .task-desc:focus {
+      border-color: rgba(75, 142, 135, 0.35);
+      background: rgba(255,255,255,0.92);
+    }
+
+    .drag-handle {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      color: #65706a;
+      cursor: grab;
+      user-select: none;
+      flex: 0 0 auto;
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .drag-handle:hover { background: rgba(115, 130, 120, 0.1); }
+
+    .row-delete {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 8px;
+      border: 1px solid rgba(160, 80, 80, 0.18);
+      background: rgba(255,255,255,0.8);
+      color: #925656;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .row-delete:hover {
+      background: #fff3f3;
+      border-color: rgba(200, 70, 70, 0.28);
+      color: #b14646;
+    }
+
+    .task-name {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 8px;
+      width: 100%;
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .task-name:hover,
+    .task-name:focus {
+      border-color: rgba(75, 142, 135, 0.35);
+      background: rgba(255,255,255,0.8);
+      outline: none;
+    }
+
+    .duration-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      border: 1px solid rgba(120, 132, 124, 0.2);
+      background: rgba(255,255,255,0.75);
+      border-radius: 10px;
+      padding: 0 8px;
+      min-height: 28px;
+      height: 28px;
+    }
+
+    .duration-cell {
+      grid-column: 2;
+      grid-row: 1;
+      align-items: flex-start;
+      padding-top: 8px;
+      padding-bottom: 4px;
+    }
+
+    .duration-input {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      color: var(--text);
+      padding: 2px 0;
+      outline: none;
+      min-width: 0;
+    }
+
+    .duration-unit {
+      color: var(--muted);
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+
+    .grid-cell {
+      padding: 8px 0;
+      border-right: 0;
+      align-items: stretch;
+      grid-column: 3;
+      grid-row: 1 / span 2;
+    }
+
+    .timeline-track {
+      position: relative;
+      width: 100%;
+      min-height: calc(var(--row-h) - 16px);
+      height: 100%;
+      border-radius: 12px;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          var(--col-line) 0,
+          var(--col-line) 1px,
+          transparent 1px,
+          transparent calc(100% / var(--grid-cols))
+        ),
+        linear-gradient(180deg, rgba(255,255,255,0.4), rgba(255,255,255,0.16));
+      overflow: hidden;
+    }
+
+    .bar {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      transform: translateY(-50%);
+      height: 52px;
+      min-width: 12px;
+      border-radius: 8px;
+      background: linear-gradient(90deg, var(--bar-a), var(--bar-b));
+      box-shadow: 0 6px 16px rgba(50, 110, 104, 0.22);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      transition: box-shadow 120ms ease;
+    }
+    .bar:hover { box-shadow: 0 8px 18px rgba(50, 110, 104, 0.28); }
+
+    .bar-label {
+      position: absolute;
+      left: 10px;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 12px;
+      color: rgba(255,255,255,0.95);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    .resize-handle {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 12px;
+      cursor: ew-resize;
+      background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.32));
+      border-top-right-radius: 8px;
+      border-bottom-right-radius: 8px;
+    }
+
+    .row:nth-child(3n) .bar { --bar-a: #e65252; --bar-b: #f06a6a; }
+    .row:nth-child(3n + 1) .bar { --bar-a: #4b8e87; --bar-b: #72d0c7; }
+    .row:nth-child(3n + 2) .bar { --bar-a: #4b83cf; --bar-b: #75b6e8; }
+
+    .add-task-row {
+      display: grid;
+      grid-template-columns: var(--left-col) var(--duration-col) var(--grid-width);
+      background: rgba(255,255,255,0.2);
+      border-top: 1px solid rgba(140, 150, 142, 0.12);
+    }
+
+    .add-task-row .cell {
+      min-height: 54px;
+    }
+
+    .add-task-row .spacer {
+      border-right: 1px solid rgba(140, 150, 142, 0.14);
+    }
+
+    .add-task-table-btn {
+      justify-self: flex-start;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 16px 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-chip::before {
+      content: "";
+      width: 14px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #4b8e87, #72d0c7);
+      display: inline-block;
+    }
+
+    .app.timer-focus {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      border-radius: 0;
+      z-index: 1000;
+      overflow: auto;
+      background: linear-gradient(180deg, #eef2ec, #e7ece3);
+    }
+
+    .app.timer-focus .titlebar,
+    .app.timer-focus .table-wrap,
+    .app.timer-focus .legend,
+    .app.timer-focus .timer-detail-card,
+    .app.timer-focus .timer-status {
+      display: none;
+    }
+
+    .app.timer-focus .timer-panel {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      border-bottom: 0;
+    }
+
+    .app.timer-focus .timer-widget {
+      width: min(100%, 880px);
+      grid-template-columns: 1fr;
+      justify-items: center;
+      gap: 16px;
+      background: rgba(255,255,255,0.42);
+    }
+
+    .app.timer-focus .timer-dial-shell {
+      width: min(78vh, 760px, 100%);
+    }
+
+    .app.timer-focus .timer-sidebar {
+      width: min(100%, 620px);
+      justify-items: stretch;
+      align-content: start;
+    }
+
+    .app.timer-focus .timer-control-panel {
+      width: 100%;
+    }
+
+    @media (max-width: 1000px) {
+      :root {
+        --left-col: 210px;
+        --duration-col: 96px;
+        --grid-width: 720px;
+      }
+
+      .timer-widget {
+        grid-template-columns: 1fr;
+      }
+
+      .timer-sidebar {
+        justify-items: center;
+      }
+
+      .timer-status {
+        width: min(100%, 460px);
+      }
+
+      .timer-controls {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="titlebar">
+      <div>
+        <h1>Task Timer Planner</h1>
+      </div>
+      <div class="actions">
+        <select id="chimeSelect" class="chime-select" aria-label="Select task chime">
+          <option value="Task_Chime_1.wav" selected>Chime 1</option>
+          <option value="Task_Chime_2.wav">Chime 2</option>
+          <option value="Task_Chime_3.wav">Chime 3</option>
+          <option value="Task_Chime_4.wav">Chime 4</option>
+          <option value="Task_Chime_5.wav">Chime 5</option>
+          <option value="Task_Chime_6.wav">Chime 6</option>
+          <option value="Task_Chime_7.wav">Chime 7</option>
+          <option value="Task_Chime_8.wav">Chime 8</option>
+        </select>
+        <button id="resetBtn" type="button">Reset</button>
+      </div>
+    </div>
+
+    <section class="timer-panel" aria-label="Project timer widget">
+      <div class="timer-widget">
+        <div class="timer-dial-shell">
+          <svg class="timer-dial" id="timerDial" viewBox="0 0 420 420" role="img" aria-label="Task timer dial">
+            <g id="timerFaceTicks"></g>
+            <g id="timerFaceLabels"></g>
+            <path id="timerRemainingArc" fill="rgba(190, 198, 210, 0.28)"></path>
+            <g id="timerSegments"></g>
+            <circle cx="210" cy="210" r="76" fill="rgba(247,247,245,0.96)" stroke="rgba(170,180,175,0.22)" stroke-width="2"></circle>
+            <path id="timerProgressHalo" d="" fill="none" stroke="rgba(110,124,145,0.22)" stroke-width="4" stroke-linecap="round"></path>
+            <line id="timerHand" x1="210" y1="210" x2="210" y2="84" stroke="#0b1020" stroke-width="10" stroke-linecap="round"></line>
+            <circle cx="210" cy="210" r="20" fill="#040507"></circle>
+            <circle cx="210" cy="210" r="9" fill="rgba(255,255,255,0.14)"></circle>
+          </svg>
+          <div class="timer-readout">
+            <div class="timer-readout-card">
+              <div class="timer-time" id="timerElapsedText">00:00</div>
+              <div class="timer-task" id="timerTaskText">Ready</div>
+              <div class="timer-sub" id="timerSubText">0 / 80 mins</div>
+            </div>
+          </div>
+          <div class="timer-overlay-buttons">
+            <button class="timer-overlay-btn timer-mute-btn" id="timerMuteBtn" type="button" aria-label="Mute timer tick" title="Mute timer tick">
+              <svg class="icon-unmuted" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5.2v13.6c0 .7-.8 1.1-1.4.7L8.7 17H5c-.6 0-1-.4-1-1V8c0-.6.4-1 1-1h3.7l3.9-2.5c.6-.4 1.4 0 1.4.7zm3.5 2.3a1 1 0 0 1 1.4 0 6.4 6.4 0 0 1 0 9 1 1 0 1 1-1.4-1.4 4.4 4.4 0 0 0 0-6.2 1 1 0 0 1 0-1.4zm-2.4 2.4a1 1 0 0 1 1.4 0 3 3 0 0 1 0 4.2 1 1 0 0 1-1.4-1.4 1 1 0 0 0 0-1.4 1 1 0 0 1 0-1.4z"/></svg>
+              <svg class="icon-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5.2v13.6c0 .7-.8 1.1-1.4.7L8.7 17H5c-.6 0-1-.4-1-1V8c0-.6.4-1 1-1h3.7l3.9-2.5c.6-.4 1.4 0 1.4.7zM19.7 8.9 17.6 11l2.1 2.1a1 1 0 1 1-1.4 1.4L16.2 12.4l-2.1 2.1a1 1 0 0 1-1.4-1.4l2.1-2.1-2.1-2.1a1 1 0 0 1 1.4-1.4l2.1 2.1 2.1-2.1a1 1 0 1 1 1.4 1.4z"/></svg>
+            </button>
+            <button class="timer-overlay-btn timer-focus-btn" id="timerFocusBtn" type="button" aria-label="Open fullscreen timer" title="Open fullscreen timer">
+              <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10V4h6v2H6v4H4zm10-6h6v6h-2V6h-4V4zM4 14h2v4h4v2H4v-6zm14 4v-4h2v6h-6v-2h4z"/></svg>
+              <svg class="icon-collapse" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4v2H8v2H6V4h4zm8 0v4h-2V6h-2V4h4zM6 16h2v2h2v2H6v-4zm10 2v-2h2v4h-4v-2h2z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="timer-sidebar">
+          <div class="timer-detail-card" aria-live="polite">
+            <h3>Current Task Details</h3>
+            <div class="timer-detail-title" id="timerDetailTaskTitle">Task 1</div>
+            <div class="timer-detail-text" id="timerDetailTaskText">Add task notes, outcomes or deliverables in the table below.</div>
+          </div>
+          <div class="timer-control-panel" aria-label="Timer control panel">
+            <h3>Control Panel</h3>
+            <div class="task-scrubber">
+              <div class="task-scrubber-top">
+                <strong id="taskScrubberStatus">0:00 / 0:00</strong>
+              </div>
+              <input id="taskScrubber" type="range" min="0" max="0" step="1" value="0" aria-label="Scrub current task progress" />
+            </div>
+            <div class="timer-controls" aria-label="Timer controls">
+              <button class="timer-btn timer-icon-btn timer-btn-skip" id="timerPrevBtn" type="button" aria-label="Skip back" title="Skip back">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM19 6.5v11c0 .8-.9 1.3-1.6.8L9.6 12l7.8-6.3c.7-.6 1.6-.1 1.6.8z"/></svg>
+              </button>
+              <button class="timer-btn timer-icon-btn timer-btn-play" id="timerStartBtn" type="button" aria-label="Play" title="Play">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13c0 .8.9 1.3 1.6.8l9-6.5c.5-.4.5-1.2 0-1.6l-9-6.5c-.7-.5-1.6 0-1.6.8z"/></svg>
+              </button>
+              <button class="timer-btn timer-icon-btn timer-btn-pause" id="timerPauseBtn" type="button" aria-label="Pause" title="Pause">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+              </button>
+              <button class="timer-btn timer-icon-btn timer-btn-stop" id="timerStopBtn" type="button" aria-label="Stop" title="Stop">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>
+              </button>
+              <button class="timer-btn timer-icon-btn timer-btn-skip" id="timerNextBtn" type="button" aria-label="Skip forward" title="Skip forward">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM5 6.5v11c0 .8.9 1.3 1.6.8l7.8-6.3-7.8-6.3c-.7-.6-1.6-.1-1.6.8z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="timer-status">
+            <div class="timer-status-row">
+              <span>Status</span>
+              <strong><span class="timer-state-dot" id="timerStateDot"></span><span id="timerStatusText">Stopped</span></strong>
+            </div>
+            <div class="timer-status-row">
+              <span>Current task</span>
+              <strong id="timerCurrentTask">Task 1</strong>
+            </div>
+            <div class="timer-status-row">
+              <span>Task progress</span>
+              <strong id="timerTaskProgress">0:00 / 15:00</strong>
+            </div>
+            <div class="timer-status-row">
+              <span>Project progress</span>
+              <strong id="timerProjectProgress">0:00 / 60:00</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="table-wrap">
+      <div class="table">
+        <div class="header">
+          <div class="hcell">Lesson Segment</div>
+          <div class="hcell">Duration</div>
+          <div class="hcell">
+            <div class="timeline-header" id="timelineHeader"></div>
+          </div>
+        </div>
+        <div class="rows" id="rows"></div>
+        <div class="add-task-row">
+          <div class="cell" style="grid-column: 1 / span 2; border-right: 1px solid rgba(140, 150, 142, 0.14);">
+            <button id="addTaskBtn" class="add-task-table-btn" type="button">Add Task</button>
+          </div>
+          <div class="cell spacer" style="border-right: 0;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="legend-chip">Bar duration</span>
+      <span>5-minute timeline ticks, 80-minute max. Input accepts values like <code>45</code>, <code>90m</code>, <code>1h 30m</code></span>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const MINUTES_PER_COL = 5;
+      const DEFAULT_PROJECT_MINUTES = 80;
+      const MAX_PROJECT_MINUTES = 80;
+      const MIN_GRID_COLS = Math.ceil(DEFAULT_PROJECT_MINUTES / MINUTES_PER_COL);
+      const COL_WIDTH_PX = 56;
+      const SNAP_MINUTES = 5;
+      const SVG_NS = "http://www.w3.org/2000/svg";
+      const TASK_PALETTE = [
+        { start: "#49c79c", end: "#54caa1" },
+        { start: "#2f6fdf", end: "#3e86ef" },
+        { start: "#f53d54", end: "#fd4b58" },
+        { start: "#f4c238", end: "#f6c63b" }
+      ];
+
+      const sampleTasks = () => ([
+        { id: crypto.randomUUID(), name: "Task 1", minutes: 15, description: "" },
+        { id: crypto.randomUUID(), name: "Task 2", minutes: 15, description: "" },
+        { id: crypto.randomUUID(), name: "Task 3", minutes: 30, description: "" }
+      ]);
+
+      let tasks = sampleTasks();
+      let dragRowId = null;
+      let resizeState = null;
+      let lastHeaderCols = null;
+
+      const rowsEl = document.getElementById("rows");
+      const timelineHeaderEl = document.getElementById("timelineHeader");
+      const addTaskBtn = document.getElementById("addTaskBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const chimeSelectEl = document.getElementById("chimeSelect");
+      const appEl = document.querySelector(".app");
+      const tableEl = document.querySelector(".table");
+      const timerDialEl = document.getElementById("timerDial");
+      const timerFaceTicksEl = document.getElementById("timerFaceTicks");
+      const timerFaceLabelsEl = document.getElementById("timerFaceLabels");
+      const timerSegmentsEl = document.getElementById("timerSegments");
+      const timerRemainingArcEl = document.getElementById("timerRemainingArc");
+      const timerHandEl = document.getElementById("timerHand");
+      const timerProgressHaloEl = document.getElementById("timerProgressHalo");
+      const timerElapsedTextEl = document.getElementById("timerElapsedText");
+      const timerTaskTextEl = document.getElementById("timerTaskText");
+      const timerSubTextEl = document.getElementById("timerSubText");
+      const timerMuteBtn = document.getElementById("timerMuteBtn");
+      const timerFocusBtn = document.getElementById("timerFocusBtn");
+      const timerStatusTextEl = document.getElementById("timerStatusText");
+      const timerStateDotEl = document.getElementById("timerStateDot");
+      const timerCurrentTaskEl = document.getElementById("timerCurrentTask");
+      const timerTaskProgressEl = document.getElementById("timerTaskProgress");
+      const timerProjectProgressEl = document.getElementById("timerProjectProgress");
+      const timerDetailTaskTitleEl = document.getElementById("timerDetailTaskTitle");
+      const timerDetailTaskTextEl = document.getElementById("timerDetailTaskText");
+      const taskScrubberEl = document.getElementById("taskScrubber");
+      const taskScrubberStatusEl = document.getElementById("taskScrubberStatus");
+      const timerPrevBtn = document.getElementById("timerPrevBtn");
+      const timerStartBtn = document.getElementById("timerStartBtn");
+      const timerPauseBtn = document.getElementById("timerPauseBtn");
+      const timerStopBtn = document.getElementById("timerStopBtn");
+      const timerNextBtn = document.getElementById("timerNextBtn");
+
+      const timerState = {
+        running: false,
+        elapsedMs: 0,
+        lastTs: 0,
+        rafId: 0,
+        faceBuilt: false,
+        segmentEls: [],
+        scrubbing: false,
+        muted: false,
+        lastTickCueTaskId: "",
+        activeTaskId: "",
+        pendingChimeTimerId: 0
+      };
+
+      const tickAudio = new Audio("Single_Clock_Tic.wav");
+      tickAudio.preload = "auto";
+      tickAudio.volume = 0.65;
+      const chimeAudio = new Audio("Task_Chime_1.wav");
+      chimeAudio.preload = "auto";
+      chimeAudio.volume = 0.7;
+
+      function setChimeSource(src) {
+        const safeSrc = String(src || "Task_Chime_1.wav");
+        try {
+          chimeAudio.pause();
+          chimeAudio.currentTime = 0;
+        } catch (_) {}
+        chimeAudio.src = safeSrc;
+        chimeAudio.load();
+      }
+
+      function getTotalMinutes() {
+        return tasks.reduce((sum, task) => sum + clampMinutes(task.minutes), 0);
+      }
+
+      function getTimelineState() {
+        const totalTaskMinutes = getTotalMinutes();
+        const gridCols = MIN_GRID_COLS;
+        const visibleMinutes = DEFAULT_PROJECT_MINUTES;
+        return { totalTaskMinutes, gridCols, visibleMinutes };
+      }
+
+      function applyTimelineVars(timeline) {
+        const gridWidthPx = `${timeline.gridCols * COL_WIDTH_PX}px`;
+        document.documentElement.style.setProperty("--grid-cols", String(timeline.gridCols));
+        document.documentElement.style.setProperty("--grid-width", gridWidthPx);
+        appEl?.style.setProperty("--grid-cols", String(timeline.gridCols));
+        appEl?.style.setProperty("--grid-width", gridWidthPx);
+        tableEl?.style.setProperty("--grid-cols", String(timeline.gridCols));
+        tableEl?.style.setProperty("--grid-width", gridWidthPx);
+      }
+
+      function buildHeader(gridCols) {
+        if (lastHeaderCols === gridCols && timelineHeaderEl.childElementCount) return;
+        lastHeaderCols = gridCols;
+        timelineHeaderEl.innerHTML = "";
+        for (let i = 0; i < gridCols; i++) {
+          const slot = document.createElement("div");
+          slot.className = "slot";
+          slot.textContent = String(i * MINUTES_PER_COL);
+          timelineHeaderEl.appendChild(slot);
+        }
+
+        const todayLine = document.createElement("div");
+        todayLine.className = "today-line";
+        timelineHeaderEl.appendChild(todayLine);
+
+        const todayTag = document.createElement("div");
+        todayTag.className = "today-tag";
+        todayTag.textContent = "Now";
+        timelineHeaderEl.appendChild(todayTag);
+      }
+
+      function clampMinutes(value) {
+        if (!Number.isFinite(value)) return 0;
+        return Math.max(0, Math.round(value));
+      }
+
+      function parseMinutes(raw) {
+        const text = String(raw).trim().toLowerCase();
+        if (!text) return null;
+
+        if (/^\d+$/.test(text)) return clampMinutes(Number(text));
+        if (/^\d+\s*m(in)?s?$/.test(text)) return clampMinutes(parseInt(text, 10));
+
+        const hm = text.match(/^(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?$/);
+        if (hm && (hm[1] || hm[2])) {
+          const hours = hm[1] ? Number(hm[1]) : 0;
+          const mins = hm[2] ? Number(hm[2]) : 0;
+          return clampMinutes(hours * 60 + mins);
+        }
+
+        const colon = text.match(/^(\d{1,2}):(\d{1,2})$/);
+        if (colon) {
+          return clampMinutes(Number(colon[1]) * 60 + Number(colon[2]));
+        }
+
+        return null;
+      }
+
+      function formatMinutes(minutes) {
+        return String(clampMinutes(minutes));
+      }
+
+      function countWords(text) {
+        const trimmed = String(text || "").trim();
+        if (!trimmed) return 0;
+        return trimmed.split(/\s+/).length;
+      }
+
+      function limitWords(text, maxWords) {
+        const parts = String(text || "").match(/\S+\s*/g);
+        if (!parts) return { text: "", words: 0, trimmed: false };
+        if (parts.length <= maxWords) {
+          return { text: parts.join(""), words: parts.length, trimmed: false };
+        }
+        return {
+          text: parts.slice(0, maxWords).join("").trimEnd(),
+          words: maxWords,
+          trimmed: true
+        };
+      }
+
+      function minutesToPercent(minutes, visibleMinutes) {
+        if (!visibleMinutes) return 0;
+        return (clampMinutes(minutes) / visibleMinutes) * 100;
+      }
+
+      function snapMinutes(minutes) {
+        return clampMinutes(Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES);
+      }
+
+      function getRemainingMinutesForTask(taskId) {
+        const minutesUsedByOthers = tasks.reduce((sum, task) => {
+          if (task.id === taskId) return sum;
+          return sum + clampMinutes(task.minutes);
+        }, 0);
+        return Math.max(0, MAX_PROJECT_MINUTES - minutesUsedByOthers);
+      }
+
+      function setTaskMinutes(taskId, requestedMinutes) {
+        const task = tasks.find((t) => t.id === taskId);
+        if (!task) return 0;
+        const capped = Math.min(clampMinutes(requestedMinutes), getRemainingMinutesForTask(taskId));
+        task.minutes = capped;
+        return capped;
+      }
+
+      function getTaskStartMinutes(taskId) {
+        let start = 0;
+        for (const task of tasks) {
+          if (task.id === taskId) return start;
+          start += clampMinutes(task.minutes);
+        }
+        return start;
+      }
+
+      function getTaskPalette(index) {
+        return TASK_PALETTE[index % TASK_PALETTE.length];
+      }
+
+      function syncRowVisualHeight(row) {
+        const taskDesc = row.querySelector(".task-desc");
+        const bar = row.querySelector(".bar");
+        const track = row.querySelector(".timeline-track");
+        if (!taskDesc || !bar || !track) return;
+
+        const descHeight = Math.max(42, Math.round(taskDesc.getBoundingClientRect().height || taskDesc.offsetHeight || 42));
+        const barHeight = descHeight + 10;
+        bar.style.height = `${barHeight}px`;
+        track.style.minHeight = `${Math.max(40, barHeight)}px`;
+      }
+
+      function formatClockMs(ms) {
+        const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+      }
+
+      function formatMinSec(minutesFloat) {
+        const totalSeconds = Math.max(0, Math.round(minutesFloat * 60));
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${mins}:${String(secs).padStart(2, "0")}`;
+      }
+
+      function getTotalTaskMinutesCapped() {
+        return Math.min(getTotalMinutes(), MAX_PROJECT_MINUTES);
+      }
+
+      function getCurrentTaskInfo(elapsedMinutesFloat) {
+        const clampedElapsed = Math.max(0, Math.min(elapsedMinutesFloat, MAX_PROJECT_MINUTES));
+        let runningStart = 0;
+        let fallback = null;
+
+        for (let index = 0; index < tasks.length; index++) {
+          const task = tasks[index];
+          const duration = clampMinutes(task.minutes);
+          const start = runningStart;
+          const end = start + duration;
+          if (duration > 0) {
+            fallback = { task, index, start, end, elapsedInTask: duration, progress: 1 };
+          }
+          if (duration > 0 && clampedElapsed < end) {
+            const elapsedInTask = Math.max(0, clampedElapsed - start);
+            return {
+              task,
+              index,
+              start,
+              end,
+              elapsedInTask,
+              progress: duration ? elapsedInTask / duration : 0
+            };
+          }
+          runningStart = end;
+        }
+
+        return fallback;
+      }
+
+      function setElapsedMinutes(nextMinutes) {
+        timerState.elapsedMs = Math.max(0, Math.min(nextMinutes, MAX_PROJECT_MINUTES)) * 60000;
+        updateTimerVisual();
+      }
+
+      function updateTimerFocusButton() {
+        const active = appEl.classList.contains("timer-focus") || document.fullscreenElement === appEl;
+        timerFocusBtn.classList.toggle("active", active);
+        timerFocusBtn.setAttribute("aria-label", active ? "Exit fullscreen timer" : "Open fullscreen timer");
+        timerFocusBtn.title = active ? "Exit fullscreen timer" : "Open fullscreen timer";
+      }
+
+      function updateTimerMuteButton() {
+        timerMuteBtn.classList.toggle("muted", timerState.muted);
+        timerMuteBtn.setAttribute("aria-label", timerState.muted ? "Unmute timer tick" : "Mute timer tick");
+        timerMuteBtn.title = timerState.muted ? "Unmute timer tick" : "Mute timer tick";
+      }
+
+      function playTickSound() {
+        if (timerState.muted) return;
+        try {
+          tickAudio.pause();
+          tickAudio.currentTime = 0;
+          const playPromise = tickAudio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {});
+          }
+        } catch (_) {
+          // Audio playback can fail due to browser policies; fail silently.
+        }
+      }
+
+      function clearPendingChime() {
+        if (timerState.pendingChimeTimerId) {
+          clearTimeout(timerState.pendingChimeTimerId);
+          timerState.pendingChimeTimerId = 0;
+        }
+      }
+
+      function stopAudioCues() {
+        clearPendingChime();
+        try {
+          tickAudio.pause();
+          tickAudio.currentTime = 0;
+        } catch (_) {}
+        try {
+          chimeAudio.pause();
+          chimeAudio.currentTime = 0;
+        } catch (_) {}
+      }
+
+      function playChimeSound() {
+        if (timerState.muted) return;
+        try {
+          chimeAudio.pause();
+          chimeAudio.currentTime = 0;
+          const playPromise = chimeAudio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {});
+          }
+        } catch (_) {
+          // Audio playback can fail due to browser policies; fail silently.
+        }
+      }
+
+      function scheduleTaskStartChime() {
+        if (timerState.muted) return;
+        clearPendingChime();
+
+        const tickIsPlaying = !tickAudio.paused && !tickAudio.ended;
+        if (!tickIsPlaying) {
+          playChimeSound();
+          return;
+        }
+
+        const onTickEnd = () => {
+          tickAudio.removeEventListener("ended", onTickEnd);
+          clearPendingChime();
+          playChimeSound();
+        };
+        tickAudio.addEventListener("ended", onTickEnd, { once: true });
+
+        const remainingMs = Number.isFinite(tickAudio.duration)
+          ? Math.max(0, (tickAudio.duration - tickAudio.currentTime) * 1000)
+          : 5200;
+        timerState.pendingChimeTimerId = setTimeout(() => {
+          tickAudio.removeEventListener("ended", onTickEnd);
+          timerState.pendingChimeTimerId = 0;
+          playChimeSound();
+        }, remainingMs + 30);
+      }
+
+      function maybePlayCountdownTick(taskInfo, taskRemainingMs) {
+        if (!timerState.running || timerState.muted || !taskInfo || timerState.scrubbing) {
+          if (!taskInfo || timerState.scrubbing) timerState.lastTickCueTaskId = "";
+          return;
+        }
+        const remainingSeconds = Math.ceil(Math.max(0, taskRemainingMs) / 1000);
+        if (remainingSeconds < 1) {
+          return;
+        }
+        if (remainingSeconds > 5) {
+          if (timerState.lastTickCueTaskId === taskInfo.task.id) {
+            timerState.lastTickCueTaskId = "";
+          }
+          return;
+        }
+        if (timerState.lastTickCueTaskId === taskInfo.task.id) return;
+        timerState.lastTickCueTaskId = taskInfo.task.id;
+        playTickSound();
+      }
+
+      async function enterTimerFocus() {
+        appEl.classList.add("timer-focus");
+        updateTimerFocusButton();
+        try {
+          if (appEl.requestFullscreen && document.fullscreenElement !== appEl) {
+            await appEl.requestFullscreen();
+          }
+        } catch (_) {
+          // Fallback keeps CSS-based focus mode without browser fullscreen.
+        }
+      }
+
+      async function exitTimerFocus() {
+        appEl.classList.remove("timer-focus");
+        updateTimerFocusButton();
+        try {
+          if (document.fullscreenElement === appEl && document.exitFullscreen) {
+            await document.exitFullscreen();
+          }
+        } catch (_) {
+          // Ignore fullscreen API failures and keep UI usable.
+        }
+      }
+
+      async function toggleTimerFocus() {
+        const active = appEl.classList.contains("timer-focus") || document.fullscreenElement === appEl;
+        if (active) {
+          await exitTimerFocus();
+        } else {
+          await enterTimerFocus();
+        }
+      }
+
+      function setElapsedToTaskOffset(taskInfo, offsetMinutes) {
+        if (!taskInfo) return;
+        const target = taskInfo.start + Math.max(0, Math.min(offsetMinutes, clampMinutes(taskInfo.task.minutes)));
+        setElapsedMinutes(target);
+      }
+
+      function minutesToAngle(minutes) {
+        return -90 + (minutes / MAX_PROJECT_MINUTES) * 360;
+      }
+
+      function polarToCartesian(cx, cy, radius, angleDeg) {
+        const rad = (angleDeg * Math.PI) / 180;
+        return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+      }
+
+      function describeDonutSegment(cx, cy, rOuter, rInner, startAngle, endAngle) {
+        const clampedSweep = Math.min(359.999, Math.max(0.0001, endAngle - startAngle));
+        const effectiveEnd = startAngle + clampedSweep;
+        const largeArc = clampedSweep > 180 ? 1 : 0;
+
+        const outerStart = polarToCartesian(cx, cy, rOuter, startAngle);
+        const outerEnd = polarToCartesian(cx, cy, rOuter, effectiveEnd);
+        const innerEnd = polarToCartesian(cx, cy, rInner, effectiveEnd);
+        const innerStart = polarToCartesian(cx, cy, rInner, startAngle);
+
+        return [
+          `M ${outerStart.x} ${outerStart.y}`,
+          `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+          `L ${innerEnd.x} ${innerEnd.y}`,
+          `A ${rInner} ${rInner} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+          "Z"
+        ].join(" ");
+      }
+
+      function describeArc(cx, cy, radius, startAngle, endAngle) {
+        const sweep = Math.min(359.999, Math.max(0.0001, endAngle - startAngle));
+        const effectiveEnd = startAngle + sweep;
+        const largeArc = sweep > 180 ? 1 : 0;
+        const start = polarToCartesian(cx, cy, radius, startAngle);
+        const end = polarToCartesian(cx, cy, radius, effectiveEnd);
+        return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y}`;
+      }
+
+      function createSvg(tag, attrs = {}) {
+        const el = document.createElementNS(SVG_NS, tag);
+        Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
+        return el;
+      }
+
+      function buildTimerFace() {
+        if (timerState.faceBuilt) return;
+        timerState.faceBuilt = true;
+        timerFaceTicksEl.innerHTML = "";
+        timerFaceLabelsEl.innerHTML = "";
+
+        for (let minute = 0; minute < MAX_PROJECT_MINUTES; minute++) {
+          const angle = minutesToAngle(minute);
+          const isMajor = minute % 5 === 0;
+          const outer = polarToCartesian(210, 210, 176, angle);
+          const inner = polarToCartesian(210, 210, isMajor ? 158 : 166, angle);
+          const tick = createSvg("line", {
+            x1: inner.x, y1: inner.y, x2: outer.x, y2: outer.y,
+            stroke: isMajor ? "#20273a" : "#3c4459",
+            "stroke-width": isMajor ? 3.4 : 1.7,
+            "stroke-linecap": "round",
+            opacity: isMajor ? 0.98 : 0.95
+          });
+          timerFaceTicksEl.appendChild(tick);
+
+          if (isMajor) {
+            const labelPos = polarToCartesian(210, 210, 194, angle);
+            const label = createSvg("text", {
+              x: labelPos.x,
+              y: labelPos.y,
+              "text-anchor": "middle",
+              "dominant-baseline": "middle",
+              class: minute % 10 === 0 ? "timer-face-label" : "timer-face-label minor"
+            });
+            label.textContent = String(minute);
+            timerFaceLabelsEl.appendChild(label);
+          }
+        }
+      }
+
+      function renderTimerSegments() {
+        buildTimerFace();
+        timerSegmentsEl.innerHTML = "";
+        timerState.segmentEls = [];
+
+        const totalMinutes = getTotalTaskMinutesCapped();
+        let runningStart = 0;
+
+        tasks.forEach((task, index) => {
+          const duration = clampMinutes(task.minutes);
+          if (duration <= 0 || runningStart >= MAX_PROJECT_MINUTES) return;
+          const usableDuration = Math.min(duration, MAX_PROJECT_MINUTES - runningStart);
+          const startAngle = minutesToAngle(runningStart);
+          const endAngle = minutesToAngle(runningStart + usableDuration);
+          const palette = getTaskPalette(index);
+
+          const path = createSvg("path", {
+            d: describeDonutSegment(210, 210, 146, 86, startAngle, endAngle),
+            fill: palette.start,
+            class: "timer-segment upcoming"
+          });
+          path.style.transition = "transform 180ms ease, opacity 180ms ease, filter 180ms ease";
+          path.style.setProperty("--seg-start", palette.start);
+          path.style.setProperty("--seg-end", palette.end);
+
+          const gradId = `timerSegGrad-${index}-${task.id}`;
+          const defs = createSvg("defs");
+          const grad = createSvg("linearGradient", { id: gradId, x1: "0%", y1: "0%", x2: "100%", y2: "0%" });
+          grad.appendChild(createSvg("stop", { offset: "0%", "stop-color": palette.start }));
+          grad.appendChild(createSvg("stop", { offset: "100%", "stop-color": palette.end }));
+          defs.appendChild(grad);
+          timerSegmentsEl.appendChild(defs);
+          path.setAttribute("fill", `url(#${gradId})`);
+
+          timerSegmentsEl.appendChild(path);
+          timerState.segmentEls.push({ path, taskId: task.id, start: runningStart, end: runningStart + usableDuration });
+          runningStart += usableDuration;
+        });
+
+        const remainingStart = Math.min(totalMinutes, MAX_PROJECT_MINUTES);
+        if (remainingStart < MAX_PROJECT_MINUTES) {
+          timerRemainingArcEl.setAttribute("d", describeDonutSegment(210, 210, 146, 86, minutesToAngle(remainingStart), minutesToAngle(MAX_PROJECT_MINUTES)));
+          timerRemainingArcEl.setAttribute("opacity", "1");
+        } else {
+          timerRemainingArcEl.setAttribute("d", "");
+          timerRemainingArcEl.setAttribute("opacity", "0");
+        }
+      }
+
+      function stopTimerLoop() {
+        timerState.running = false;
+        timerState.lastTs = 0;
+        if (timerState.rafId) cancelAnimationFrame(timerState.rafId);
+        timerState.rafId = 0;
+        clearPendingChime();
+      }
+
+      function normalizeTimerElapsed() {
+        const totalMs = getTotalTaskMinutesCapped() * 60000;
+        if (timerState.elapsedMs > totalMs) {
+          timerState.elapsedMs = totalMs;
+          if (timerState.running) stopTimerLoop();
+        }
+      }
+
+      function updateTimerVisual() {
+        normalizeTimerElapsed();
+        const elapsedMinutes = Math.min(timerState.elapsedMs / 60000, MAX_PROJECT_MINUTES);
+        const totalTaskMinutes = getTotalTaskMinutesCapped();
+        const dialRatio = MAX_PROJECT_MINUTES ? elapsedMinutes / MAX_PROJECT_MINUTES : 0;
+        const taskInfo = getCurrentTaskInfo(elapsedMinutes);
+
+        timerHandEl.setAttribute("transform", `rotate(${(elapsedMinutes / MAX_PROJECT_MINUTES) * 360} 210 210)`);
+        timerProgressHaloEl.setAttribute("d", describeArc(210, 210, 92, -90, minutesToAngle(elapsedMinutes)));
+        document.documentElement.style.setProperty("--today-x", `${Math.max(0, Math.min(100, dialRatio * 100))}%`);
+        appEl?.style.setProperty("--today-x", `${Math.max(0, Math.min(100, dialRatio * 100))}%`);
+
+        timerSubTextEl.textContent = `${Math.round(elapsedMinutes)} / ${MAX_PROJECT_MINUTES} mins`;
+        timerStatusTextEl.textContent = timerState.running ? "Running" : "Stopped";
+        timerStateDotEl.classList.toggle("running", timerState.running);
+
+        if (taskInfo && taskInfo.task) {
+          if (
+            timerState.activeTaskId &&
+            timerState.activeTaskId !== taskInfo.task.id &&
+            taskInfo.index > 0 &&
+            timerState.running &&
+            !timerState.scrubbing
+          ) {
+            scheduleTaskStartChime();
+          }
+          timerState.activeTaskId = taskInfo.task.id;
+
+          const palette = getTaskPalette(taskInfo.index);
+          const taskElapsedMs = taskInfo.elapsedInTask * 60000;
+          const taskTotalMs = clampMinutes(taskInfo.task.minutes) * 60000;
+          const taskRemainingMs = Math.max(0, taskTotalMs - taskElapsedMs);
+          timerElapsedTextEl.textContent = formatClockMs(taskRemainingMs);
+          timerTaskTextEl.textContent = taskInfo.task.name || "Untitled task";
+          timerTaskTextEl.style.color = palette.start;
+          timerCurrentTaskEl.textContent = taskInfo.task.name || "Untitled task";
+          timerCurrentTaskEl.style.color = palette.start;
+          timerDetailTaskTitleEl.textContent = taskInfo.task.name || "Untitled task";
+          timerDetailTaskTitleEl.style.color = palette.start;
+          timerDetailTaskTextEl.textContent = (taskInfo.task.description || "").trim() || "No description/outcomes/deliverables entered yet.";
+          timerTaskProgressEl.textContent = `${formatClockMs(taskElapsedMs)} / ${formatClockMs(taskTotalMs)}`;
+          maybePlayCountdownTick(taskInfo, taskRemainingMs);
+          taskScrubberStatusEl.textContent = `${formatClockMs(taskElapsedMs)} / ${formatClockMs(taskTotalMs)}`;
+          taskScrubberEl.disabled = false;
+          taskScrubberEl.max = String(Math.max(1, Math.round(taskTotalMs / 1000)));
+          taskScrubberEl.value = String(Math.min(Math.round(taskTotalMs / 1000), Math.round(taskElapsedMs / 1000)));
+          taskScrubberEl.style.color = palette.start;
+          const scrubPct = taskTotalMs > 0 ? (taskElapsedMs / taskTotalMs) * 100 : 0;
+          taskScrubberEl.style.setProperty("--scrub-fill", `${Math.max(0, Math.min(100, scrubPct))}%`);
+          taskScrubberEl.style.background = `linear-gradient(90deg, ${palette.start} 0%, ${palette.start} ${scrubPct}%, rgba(220,225,220,0.9) ${scrubPct}%, rgba(220,225,220,0.9) 100%)`;
+        } else {
+          timerState.activeTaskId = "";
+          timerElapsedTextEl.textContent = "00:00";
+          timerTaskTextEl.textContent = "Ready";
+          timerTaskTextEl.style.color = "";
+          timerCurrentTaskEl.textContent = "No active task";
+          timerCurrentTaskEl.style.color = "";
+          timerDetailTaskTitleEl.textContent = "No active task";
+          timerDetailTaskTitleEl.style.color = "";
+          timerDetailTaskTextEl.textContent = "Add task notes, outcomes or deliverables in the table below.";
+          timerTaskProgressEl.textContent = "0:00 / 0:00";
+          taskScrubberStatusEl.textContent = "0:00 / 0:00";
+          taskScrubberEl.disabled = true;
+          taskScrubberEl.max = "0";
+          taskScrubberEl.value = "0";
+          taskScrubberEl.style.background = "";
+          timerState.lastTickCueTaskId = "";
+          clearPendingChime();
+        }
+
+        timerProjectProgressEl.textContent = `${formatClockMs(timerState.elapsedMs)} / ${formatClockMs(totalTaskMinutes * 60000)}`;
+
+        timerState.segmentEls.forEach((seg) => {
+          const isCurrent = taskInfo && seg.taskId === taskInfo.task.id && elapsedMinutes < seg.end + 1e-6;
+          const isCompleted = elapsedMinutes >= seg.end;
+          seg.path.classList.toggle("current", Boolean(isCurrent));
+          seg.path.classList.toggle("completed", Boolean(isCompleted));
+          seg.path.classList.toggle("upcoming", !isCurrent && !isCompleted);
+
+          if (isCurrent) {
+            const mid = (seg.start + seg.end) / 2;
+            const angle = minutesToAngle(mid);
+            const dx = Math.cos((angle * Math.PI) / 180) * 10;
+            const dy = Math.sin((angle * Math.PI) / 180) * 10;
+            seg.path.setAttribute("transform", `translate(${dx}, ${dy})`);
+          } else {
+            seg.path.removeAttribute("transform");
+          }
+        });
+      }
+
+      function timerFrame(ts) {
+        if (!timerState.running) return;
+        if (timerState.lastTs) {
+          timerState.elapsedMs += Math.max(0, ts - timerState.lastTs);
+        }
+        timerState.lastTs = ts;
+
+        const totalMs = getTotalTaskMinutesCapped() * 60000;
+        if (totalMs <= 0 || timerState.elapsedMs >= totalMs) {
+          timerState.elapsedMs = Math.min(timerState.elapsedMs, totalMs);
+          stopTimerLoop();
+          updateTimerVisual();
+          return;
+        }
+
+        updateTimerVisual();
+        timerState.rafId = requestAnimationFrame(timerFrame);
+      }
+
+      function startTimer() {
+        const totalMs = getTotalTaskMinutesCapped() * 60000;
+        if (totalMs <= 0) return;
+        if (timerState.elapsedMs >= totalMs) timerState.elapsedMs = 0;
+        if (timerState.running) return;
+        timerState.running = true;
+        timerState.lastTs = 0;
+        timerState.rafId = requestAnimationFrame(timerFrame);
+        updateTimerVisual();
+      }
+
+      function stopTimer() {
+        stopTimerLoop();
+        updateTimerVisual();
+      }
+
+      function pauseTimer() {
+        stopTimerLoop();
+        updateTimerVisual();
+      }
+
+      function resetTimer() {
+        stopTimerLoop();
+        timerState.elapsedMs = 0;
+        timerState.activeTaskId = "";
+        timerState.lastTickCueTaskId = "";
+        updateTimerVisual();
+      }
+
+      function skipForwardTask() {
+        const elapsedMinutes = timerState.elapsedMs / 60000;
+        const info = getCurrentTaskInfo(elapsedMinutes);
+        if (!info) {
+          setElapsedMinutes(0);
+          return;
+        }
+        const next = tasks[info.index + 1];
+        if (next) {
+          setElapsedMinutes(info.end);
+        } else {
+          setElapsedMinutes(getTotalTaskMinutesCapped());
+        }
+      }
+
+      function skipBackTask() {
+        const elapsedMinutes = timerState.elapsedMs / 60000;
+        const info = getCurrentTaskInfo(elapsedMinutes);
+        if (!info) {
+          setElapsedMinutes(0);
+          return;
+        }
+        const secondsIntoTask = (elapsedMinutes - info.start) * 60;
+        if (secondsIntoTask > 2) {
+          setElapsedMinutes(info.start);
+          return;
+        }
+        const prev = tasks[info.index - 1];
+        if (!prev) {
+          setElapsedMinutes(0);
+          return;
+        }
+        const prevStart = tasks.slice(0, info.index - 1).reduce((sum, task) => sum + clampMinutes(task.minutes), 0);
+        setElapsedMinutes(prevStart);
+      }
+
+      function refreshTimelineLayout() {
+        const timeline = getTimelineState();
+        applyTimelineVars(timeline);
+        buildHeader(timeline.gridCols);
+
+        let runningStart = 0;
+        tasks.forEach((task, index) => {
+          const row = rowsEl.querySelector(`.row[data-id="${task.id}"]`);
+          if (!row) {
+            runningStart += clampMinutes(task.minutes);
+            return;
+          }
+          syncRowVisualHeight(row);
+          updateRowBar(row, task, runningStart, timeline.visibleMinutes);
+          runningStart += clampMinutes(task.minutes);
+        });
+
+        renderTimerSegments();
+        updateTimerVisual();
+      }
+
+      function clearDropMarkers() {
+        rowsEl.querySelectorAll(".row").forEach((row) => {
+          row.classList.remove("drop-before", "drop-after");
+        });
+      }
+
+      function moveTask(dragId, targetId, placeAfter) {
+        if (!dragId || dragId === targetId) return;
+        const fromIndex = tasks.findIndex((t) => t.id === dragId);
+        const targetIndex = tasks.findIndex((t) => t.id === targetId);
+        if (fromIndex < 0 || targetIndex < 0) return;
+
+        const [item] = tasks.splice(fromIndex, 1);
+        let insertIndex = targetIndex;
+        if (fromIndex < targetIndex) insertIndex -= 1;
+        if (placeAfter) insertIndex += 1;
+        tasks.splice(insertIndex, 0, item);
+        renderRows();
+      }
+
+      function deleteTask(taskId) {
+        const nextTasks = tasks.filter((task) => task.id !== taskId);
+        if (nextTasks.length === tasks.length) return;
+        tasks = nextTasks;
+        if (resizeState?.taskId === taskId) resizeState = null;
+        renderRows();
+      }
+
+      function renderRows() {
+        rowsEl.innerHTML = "";
+
+        tasks.forEach((task, index) => {
+          const row = document.createElement("div");
+          row.className = "row";
+          row.draggable = true;
+          row.dataset.id = task.id;
+
+          row.addEventListener("dragstart", (event) => {
+            dragRowId = task.id;
+            row.classList.add("dragging");
+            event.dataTransfer.effectAllowed = "move";
+            try {
+              event.dataTransfer.setData("text/plain", task.id);
+            } catch (_) {}
+          });
+
+          row.addEventListener("dragend", () => {
+            dragRowId = null;
+            row.classList.remove("dragging");
+            clearDropMarkers();
+          });
+
+          row.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            if (!dragRowId || dragRowId === task.id) return;
+
+            const rect = row.getBoundingClientRect();
+            const before = (event.clientY - rect.top) < rect.height / 2;
+            row.classList.toggle("drop-before", before);
+            row.classList.toggle("drop-after", !before);
+          });
+
+          row.addEventListener("dragleave", () => {
+            row.classList.remove("drop-before", "drop-after");
+          });
+
+          row.addEventListener("drop", (event) => {
+            event.preventDefault();
+            if (!dragRowId || dragRowId === task.id) return;
+            const rect = row.getBoundingClientRect();
+            const before = (event.clientY - rect.top) < rect.height / 2;
+            moveTask(dragRowId, task.id, !before);
+          });
+
+          const taskCell = document.createElement("div");
+          taskCell.className = "cell task-cell";
+
+          const handle = document.createElement("div");
+          handle.className = "drag-handle";
+          handle.textContent = "⋮⋮";
+          handle.title = "Drag row to reorder";
+
+          const taskInput = document.createElement("input");
+          taskInput.className = "task-name";
+          taskInput.type = "text";
+          taskInput.value = task.name;
+          taskInput.style.color = getTaskPalette(index).start;
+          taskInput.addEventListener("input", (e) => {
+            task.name = e.target.value;
+            const labelEl = row.querySelector(".bar-label");
+            if (labelEl) labelEl.textContent = task.name || "Untitled task";
+            updateTimerVisual();
+          });
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.className = "row-delete";
+          deleteBtn.type = "button";
+          deleteBtn.title = `Delete ${task.name || "task"}`;
+          deleteBtn.setAttribute("aria-label", `Delete ${task.name || "task"}`);
+          deleteBtn.textContent = "×";
+          deleteBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            deleteTask(task.id);
+          });
+
+          const taskFields = document.createElement("div");
+          taskFields.className = "task-fields";
+
+          const taskHead = document.createElement("div");
+          taskHead.className = "task-head";
+
+          const taskDesc = document.createElement("textarea");
+          taskDesc.className = "task-desc";
+          taskDesc.rows = 1;
+          taskDesc.placeholder = ". . .";
+          taskDesc.value = task.description || "";
+          taskDesc.setAttribute("aria-label", `Description for ${task.name}`);
+
+          function syncDescField(nextValue) {
+            const limited = limitWords(nextValue, 150);
+            if (taskDesc.value !== limited.text) {
+              taskDesc.value = limited.text;
+            }
+            task.description = limited.text;
+            updateTimerVisual();
+          }
+
+          syncDescField(task.description || "");
+          taskDesc.addEventListener("input", (e) => {
+            syncDescField(e.target.value);
+            syncRowVisualHeight(row);
+          });
+
+          if (typeof ResizeObserver !== "undefined") {
+            const descResizeObserver = new ResizeObserver(() => {
+              syncRowVisualHeight(row);
+            });
+            descResizeObserver.observe(taskDesc);
+          }
+
+          taskHead.append(taskInput, deleteBtn);
+          taskFields.append(taskHead);
+
+          taskCell.append(handle, taskFields);
+
+          const taskDescCell = document.createElement("div");
+          taskDescCell.className = "cell task-desc-cell";
+          taskDescCell.append(taskDesc);
+
+          const durationCell = document.createElement("div");
+          durationCell.className = "cell duration-cell";
+
+          const durationWrap = document.createElement("div");
+          durationWrap.className = "duration-wrap";
+
+          const durationInput = document.createElement("input");
+          durationInput.className = "duration-input";
+          durationInput.type = "text";
+          durationInput.inputMode = "numeric";
+          durationInput.value = formatMinutes(task.minutes);
+          durationInput.setAttribute("aria-label", `Duration for ${task.name}`);
+
+          durationInput.addEventListener("change", () => {
+            const parsed = parseMinutes(durationInput.value);
+            if (parsed == null) {
+              durationInput.value = formatMinutes(task.minutes);
+              return;
+            }
+            setTaskMinutes(task.id, parsed);
+            durationInput.value = formatMinutes(task.minutes);
+            refreshTimelineLayout();
+          });
+
+          const durationUnit = document.createElement("span");
+          durationUnit.className = "duration-unit";
+          durationUnit.textContent = "min";
+
+          durationWrap.append(durationInput, durationUnit);
+          durationCell.append(durationWrap);
+
+          const gridCell = document.createElement("div");
+          gridCell.className = "cell grid-cell";
+
+          const track = document.createElement("div");
+          track.className = "timeline-track";
+
+          const bar = document.createElement("div");
+          bar.className = "bar";
+          const palette = getTaskPalette(index);
+          bar.style.setProperty("--bar-a", palette.start);
+          bar.style.setProperty("--bar-b", palette.end);
+
+          const barLabel = document.createElement("div");
+          barLabel.className = "bar-label";
+          barLabel.textContent = task.name || "Untitled task";
+
+          const resizeHandle = document.createElement("div");
+          resizeHandle.className = "resize-handle";
+          resizeHandle.title = "Drag to resize duration";
+
+          resizeHandle.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            resizeState = {
+              taskId: task.id,
+              rowEl: row
+            };
+            document.body.style.cursor = "ew-resize";
+          });
+
+          bar.append(barLabel, resizeHandle);
+          track.append(bar);
+          gridCell.append(track);
+
+          row.append(taskCell, taskDescCell, durationCell, gridCell);
+          rowsEl.append(row);
+        });
+
+        refreshTimelineLayout();
+      }
+
+      function updateRowBar(row, task, startMinutes, visibleMinutes) {
+        const bar = row.querySelector(".bar");
+        const durationInput = row.querySelector(".duration-input");
+        if (!bar || !durationInput) return;
+        bar.style.left = `${minutesToPercent(startMinutes, visibleMinutes)}%`;
+        bar.style.width = `${minutesToPercent(task.minutes, visibleMinutes)}%`;
+        durationInput.value = formatMinutes(task.minutes);
+      }
+
+      document.addEventListener("mousemove", (event) => {
+        if (!resizeState) return;
+        const { taskId, rowEl } = resizeState;
+        const task = tasks.find((t) => t.id === taskId);
+        if (!task) return;
+
+        const track = rowEl.querySelector(".timeline-track");
+        if (!track) return;
+
+        const { visibleMinutes } = getTimelineState();
+        const trackRect = track.getBoundingClientRect();
+        const x = Math.min(Math.max(event.clientX, trackRect.left), trackRect.right);
+        const absoluteMinutes = ((x - trackRect.left) / trackRect.width) * visibleMinutes;
+        const taskStart = getTaskStartMinutes(taskId);
+        const rawMinutes = absoluteMinutes - taskStart;
+        setTaskMinutes(taskId, snapMinutes(Math.max(0, rawMinutes)));
+        refreshTimelineLayout();
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+      });
+
+      addTaskBtn.addEventListener("click", () => {
+        const remaining = Math.max(0, MAX_PROJECT_MINUTES - getTotalMinutes());
+        const next = {
+          id: crypto.randomUUID(),
+          name: `New task ${tasks.length + 1}`,
+          minutes: Math.min(15, remaining),
+          description: ""
+        };
+        tasks.push(next);
+        renderRows();
+      });
+
+      resetBtn.addEventListener("click", () => {
+        tasks = sampleTasks();
+        renderRows();
+      });
+
+      taskScrubberEl.addEventListener("input", () => {
+        const info = getCurrentTaskInfo(timerState.elapsedMs / 60000);
+        if (!info) return;
+        timerState.scrubbing = true;
+        timerState.lastTickCueTaskId = "";
+        stopAudioCues();
+        setElapsedToTaskOffset(info, Number(taskScrubberEl.value) / 60);
+      });
+
+      taskScrubberEl.addEventListener("change", () => {
+        timerState.scrubbing = false;
+        timerState.lastTickCueTaskId = "";
+        updateTimerVisual();
+      });
+
+      timerMuteBtn.addEventListener("click", () => {
+        timerState.muted = !timerState.muted;
+        updateTimerMuteButton();
+      });
+      chimeSelectEl.addEventListener("change", () => {
+        setChimeSource(chimeSelectEl.value);
+      });
+      timerPrevBtn.addEventListener("click", skipBackTask);
+      timerNextBtn.addEventListener("click", skipForwardTask);
+      timerStartBtn.addEventListener("click", startTimer);
+      timerPauseBtn.addEventListener("click", pauseTimer);
+      timerStopBtn.addEventListener("click", resetTimer);
+      timerFocusBtn.addEventListener("click", toggleTimerFocus);
+
+      document.addEventListener("fullscreenchange", () => {
+        if (document.fullscreenElement !== appEl) {
+          appEl.classList.remove("timer-focus");
+        }
+        updateTimerFocusButton();
+      });
+
+      renderRows();
+      updateTimerFocusButton();
+      updateTimerMuteButton();
+      setChimeSource(chimeSelectEl.value);
+    })();
+  </script>
+</body>
+</html>
